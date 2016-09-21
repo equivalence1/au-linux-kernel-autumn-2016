@@ -1,6 +1,9 @@
 #ifndef _LL_STACK_H
 #define _LL_STACK_H
+
 #include <linux/list.h>
+#include <linux/slab.h>
+#include <linux/gfp.h>
 
 typedef struct stack_entry {
     struct list_head lh;
