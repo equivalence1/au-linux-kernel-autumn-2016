@@ -10,9 +10,7 @@ stack_entry_t* create_stack_entry(void *data)
         return NULL;
 
     stack_entry = (stack_entry_t *)place;
-    /* for some reason i could not use LIST_HEAD_INIT, idk why */
-    stack_entry->lh.next = &stack_entry->lh;
-    stack_entry->lh.prev = &stack_entry->lh;
+    INIT_LIST_HEAD(&stack_entry->lh);
     stack_entry->data    = data;
 
     return stack_entry;
