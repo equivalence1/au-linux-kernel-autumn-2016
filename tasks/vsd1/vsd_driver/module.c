@@ -92,7 +92,7 @@ static loff_t vsd_dev_llseek(struct file *filp, loff_t off, int whence)
 static long vsd_ioctl_get_size(vsd_ioctl_get_size_arg_t __user *uarg)
 {
     vsd_ioctl_get_size_arg_t b_size = {.size = vsd_dev->buf_size};
-    if (copy_to_user(uarg, b_size, sizeof(b_size)))
+    if (copy_to_user(uarg, &b_size, sizeof(b_size)))
         return -EFAULT;
 
     return 0;
@@ -152,7 +152,7 @@ static int vsd_driver_probe(struct platform_device *pdev)
     }
     vsd_dev->mdev.minor = MISC_DYNAMIC_MINOR;
     vsd_dev->mdev.name = "vsd";
-    vsd_dev->mdev.fops = vsd_dev_fops;
+    vsd_dev->mdev.fops = &vsd_dev_fops;
     vsd_dev->mdev.mode = S_IRUSR | S_IRGRP | S_IROTH
         | S_IWUSR| S_IWGRP | S_IWOTH;
 
@@ -175,7 +175,7 @@ static int vsd_driver_probe(struct platform_device *pdev)
 error_get_buf:
     misc_deregister(&vsd_dev->mdev);
 error_misc_reg:
-    devm_kfree(vsd_dev); // I'm pretty sure this function should be used here instead of kfree
+    devm_kfree(&pdev->dev, vsd_dev); // I'm pretty sure this function should be used here instead of kfree
     vsd_dev = NULL;
 error_alloc:
     return ret;
