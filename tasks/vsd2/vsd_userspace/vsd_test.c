@@ -17,7 +17,7 @@ static void run_one_test(off_t vsd_offset, size_t vsd_size) {
     unsigned char *vsd_rw_buf = malloc(vsd_size);
     size_t i = 0;
     for (; i < vsd_size; ++i) {
-        vsd_rw_buf[i] = i % 255;
+        vsd_rw_buf[i] = i % 254 + 1;
     }
 
     TEST(vsd_write(vsd_rw_buf, vsd_offset, vsd_size) >= 0);
@@ -26,6 +26,7 @@ static void run_one_test(off_t vsd_offset, size_t vsd_size) {
     TEST(vsd_mem);
 
     // Check that written data is visible by mmap
+    fprintf(stderr, "memcmp: %d\n", memcmp(vsd_rw_buf, vsd_mem, vsd_size));
     TEST(!memcmp(vsd_rw_buf, vsd_mem, vsd_size));
     // Check in opposite direction
     vsd_mem[10] = ~vsd_mem[10];

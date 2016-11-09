@@ -154,19 +154,18 @@ static struct vm_operations_struct vsd_dev_vma_ops = {
 static int map_vmalloc_range(struct vm_area_struct *uvma, void *kaddr, size_t size)
 {
     unsigned long uaddr = uvma->vm_start;
-    char *cur_addr; 
+    unsigned long offset = 0;
 
     if (!PAGE_ALIGNED(uaddr) || !PAGE_ALIGNED(kaddr)
             || !PAGE_ALIGNED(size))
         return -EINVAL;
 
-    cur_addr = (char *)kaddr;
-    while (cur_addr - (char *)kaddr < size) {
-        struct page *p = vmalloc_to_page(cur_addr);
+    while (offset < size) {
+        struct page *p = vmalloc_to_page((char *)kaddr + offset);
         if (p == NULL)
-            return -1;
-        vm_insert_page(uvma, uaddr + (unsigned long)(cur_addr - (char *)kaddr), p);
-        cur_addr += PAGE_SIZE;
+            return -ENXIO;
+        vm_insert_page(uvma, uaddr + offset, p);
+        offset += PAGE_SIZE;
     }
 
     uvma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
@@ -191,6 +190,7 @@ static int vsd_dev_mmap(struct file *filp, struct vm_area_struct *vma)
         return ret;
 
     vma->vm_ops = &vsd_dev_vma_ops;
+    vsd_dev_vma_open(vma);
 
     return 0;
 }

@@ -5,8 +5,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define PAGE_ALIGNED(size) (size % getpagesize() == 0)
-
 static int fd = 0;
 static const char *dev_file = "/dev/vsd";
 
@@ -21,8 +19,9 @@ int vsd_init()
 
 int vsd_deinit()
 {
-    close(fd);
-    return 0;
+    if (fd <= 0)
+        return -1;
+    return close(fd);
 }
 
 static inline
@@ -77,8 +76,6 @@ ssize_t vsd_write(const char* src, off_t offset, size_t size)
 void* vsd_mmap(size_t offset)
 {
     size_t *cur_size;
-    if (!PAGE_ALIGNED(offset))
-        return NULL;
     if (fd <= 0)
         return NULL;
     if (vsd_get_size(cur_size) != 0)
@@ -89,8 +86,6 @@ void* vsd_mmap(size_t offset)
 int vsd_munmap(void* addr, size_t offset)
 {
     if (fd <= 0)
-        return -1;
-    if (!PAGE_ALIGNED(offset))
         return -1;
     return munmap(addr, offset);
 }
