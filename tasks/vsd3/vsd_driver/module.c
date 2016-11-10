@@ -13,6 +13,7 @@
 #include <linux/interrupt.h>
 #include <linux/wait.h>
 #include <linux/sched.h>
+#include <linux/semaphore.h>
 
 #include "../vsd_device/vsd_hw.h"
 #include "vsd_ioctl.h"
@@ -25,6 +26,9 @@ typedef struct vsd_dev {
     volatile vsd_hw_regs_t *hwregs;
 } vsd_dev_t;
 static vsd_dev_t *vsd_dev;
+    
+static struct semaphore sem;
+static wait_queue_head_t pending_q; // this will always contain only <= 1 elements
 
 #define LOCAL_DEBUG 0
 static void print_vsd_dev_hw_regs(vsd_dev_t *vsd_dev)
@@ -65,29 +69,85 @@ static int vsd_dev_release(struct inode *inode, struct file *filp)
 static void vsd_dev_dma_op_complete_tsk_func(unsigned long unused)
 {
     (void)unused;
-    // TODO wake up thread waiting for VSD cmd completion
+    vsd_dev->hwregs->cmd = VSD_CMD_NONE;
+    mb();
+    wake_up(&pending_q);
 }
+
+#define UNLOCK_AND_FREE(buff_to_free) \
+    up(&sem); \
+    kfree(buff_to_free);
+
+#define REWRITE_REGS(_cmd, _tasklet_vaddr, _dma_paddr, _dma_size, _dev_offset) \
+    vsd_dev->hwregs->tasklet_vaddr = (uint64_t)(_tasklet_vaddr); \
+    vsd_dev->hwregs->dma_paddr = (uint64_t)(_dma_paddr); \
+    vsd_dev->hwregs->dma_size = (uint64_t)(_dma_size); \
+    vsd_dev->hwregs->dev_offset = (uint64_t)(_dev_offset); \
+    wmb(); \
+    vsd_dev->hwregs->cmd = (uint8_t)(_cmd);
 
 static ssize_t vsd_dev_read(struct file *filp,
     char __user *read_user_buf, size_t read_size, loff_t *fpos)
 {
-    (void)filp;
-    (void)read_user_buf;
-    (void)read_size;
-    (void)fpos;
-    // TODO
-    return -EINVAL;
+    void *tmp_buf;
+    if (down_interruptible(&sem))
+        return -ERESTARTSYS;
+
+    tmp_buf = kmalloc(read_size, GFP_KERNEL);
+    if (tmp_buf == NULL) {
+        UNLOCK_AND_FREE(tmp_buf);
+        return -ENOMEM;
+    }
+
+    REWRITE_REGS(
+            VSD_CMD_READ,
+            &vsd_dev->dma_op_complete_tsk,
+            virt_to_phys(tmp_buf),
+            read_size,
+            *fpos
+    )
+
+    wait_event(pending_q, vsd_dev->hwregs->cmd == VSD_CMD_NONE);
+
+    if (copy_to_user(read_user_buf, tmp_buf, vsd_dev->hwregs->result)) {
+        UNLOCK_AND_FREE(tmp_buf);
+        return -EFAULT;
+    }
+
+    UNLOCK_AND_FREE(tmp_buf);
+    return vsd_dev->hwregs->result;
 }
 
 static ssize_t vsd_dev_write(struct file *filp,
     const char __user *write_user_buf, size_t write_size, loff_t *fpos)
 {
-    (void)filp;
-    (void)write_user_buf;
-    (void)write_size;
-    (void)fpos;
-    // TODO
-    return -EINVAL;
+    void *tmp_buf;
+    if (down_interruptible(&sem))
+        return -ERESTARTSYS;
+
+    tmp_buf = kmalloc(write_size, GFP_KERNEL);
+    if (tmp_buf == NULL) {
+        UNLOCK_AND_FREE(tmp_buf);
+        return -ENOMEM;
+    }
+
+    if (copy_from_user(tmp_buf, write_user_buf, write_size)) {
+        UNLOCK_AND_FREE(tmp_buf);
+        return -EFAULT;
+    }
+
+    REWRITE_REGS(
+            VSD_CMD_WRITE,
+            &vsd_dev->dma_op_complete_tsk,
+            virt_to_phys(tmp_buf),
+            write_size,
+            *fpos
+    )
+
+    wait_event(pending_q, vsd_dev->hwregs->cmd == VSD_CMD_NONE);
+
+    UNLOCK_AND_FREE(tmp_buf);
+    return vsd_dev->hwregs->result;
 }
 
 static loff_t vsd_dev_llseek(struct file *filp, loff_t off, int whence)
@@ -130,8 +190,33 @@ static long vsd_ioctl_get_size(vsd_ioctl_get_size_arg_t __user *uarg)
 
 static long vsd_ioctl_set_size(vsd_ioctl_set_size_arg_t __user *uarg)
 {
-    (void)uarg;
-    return -EINVAL;
+    vsd_ioctl_get_size_arg_t *tmp_arg;
+    if (down_interruptible(&sem))
+        return -ERESTARTSYS;
+
+    tmp_arg = (vsd_ioctl_get_size_arg_t *)kmalloc(sizeof(*tmp_arg), GFP_KERNEL);
+    if (tmp_arg == NULL) {
+        UNLOCK_AND_FREE(tmp_arg);
+        return -ENOMEM;
+    }
+
+    if (copy_from_user(tmp_arg, uarg, sizeof(vsd_ioctl_get_size_arg_t))) {
+        UNLOCK_AND_FREE(tmp_arg);
+        return -EFAULT;
+    }
+
+    REWRITE_REGS(
+            VSD_CMD_SET_SIZE,
+            &vsd_dev->dma_op_complete_tsk,
+            0,
+            0,
+            tmp_arg->size
+    )
+
+    wait_event(pending_q, vsd_dev->hwregs->cmd == VSD_CMD_NONE);
+
+    UNLOCK_AND_FREE(tmp_arg);
+    return vsd_dev->hwregs->result;
 }
 
 static long vsd_dev_ioctl(struct file *filp, unsigned int cmd,
@@ -181,7 +266,7 @@ static int vsd_driver_probe(struct platform_device *pdev)
     vsd_dev->mdev.name = "vsd";
     vsd_dev->mdev.fops = &vsd_dev_fops;
     vsd_dev->mdev.mode = S_IRUSR | S_IRGRP | S_IROTH
-        | S_IWUSR| S_IWGRP | S_IWOTH;
+        | S_IWUSR | S_IWGRP | S_IWOTH;
 
     if ((ret = misc_register(&vsd_dev->mdev)))
         goto error_misc_reg;
@@ -231,6 +316,9 @@ static struct platform_driver vsd_driver = {
 
 static int __init vsd_driver_init(void)
 {
+    init_waitqueue_head(&pending_q);
+    sema_init(&sem, 1);
+
     return platform_driver_register(&vsd_driver);
 }
 

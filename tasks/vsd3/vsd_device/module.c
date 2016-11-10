@@ -55,25 +55,34 @@ static vsd_plat_device_t dev = {
 };
 
 static ssize_t vsd_dev_read(char *dst, size_t dst_size, size_t offset) {
-    (void)dst;
-    (void)dst_size;
-    (void)offset;
-    // TODO
-    return -EINVAL;
+    if (offset >= dev.buf_size)
+        return -EINVAL;
+    dst_size = min(dst_size, dev.buf_size - offset);
+    memcpy(dst, dev.vbuf + offset, dst_size);
+    dev.hwregs->result = dst_size;
+
+    return dst_size;
 }
 
 static ssize_t vsd_dev_write(char *src, size_t src_size, size_t offset) {
-    (void)src;
-    (void)src_size;
-    (void)offset;
-    // TODO
-    return -EINVAL;
+    if (offset >= dev.buf_size)
+        return -EINVAL;
+    src_size = min(src_size, dev.buf_size - offset);
+    memcpy(dev.vbuf, src, src_size);
+    dev.hwregs->result = src_size;
+
+    return src_size;
 }
 
 static void vsd_dev_set_size(size_t size)
 {
-    (void)size;
-    // TODO
+    if (size > buf_size) {
+        dev.hwregs->result = -EINVAL;
+        return;
+    }
+    dev.buf_size = size;
+    dev.hwregs->dev_size = size;
+    dev.hwregs->result = 0;
 }
 
 static int vsd_dev_cmd_poll_kthread_func(void *data)
@@ -101,7 +110,8 @@ static int vsd_dev_cmd_poll_kthread_func(void *data)
                 break;
         }
 
-        // TODO notify vsd_driver about finished cmd
+        if (dev.hwregs->tasklet_vaddr != 0)
+            tasklet_schedule((struct tasklet_struct *)dev.hwregs->tasklet_vaddr);
         // Sleep one sec not to waste CPU on polling
         ssleep(1);
     }
@@ -135,6 +145,7 @@ static int __init vsd_dev_module_init(void)
     dev.buf_size = buf_size;
     dev.hwregs->cmd = VSD_CMD_NONE;
     dev.hwregs->dev_size = dev.buf_size;
+    dev.hwregs->tasklet_vaddr = 0;
     dev.pdev.resource[VSD_RES_REGS_IX].start =
         virt_to_phys(dev.hwregs);
     dev.pdev.resource[VSD_RES_REGS_IX].end =
