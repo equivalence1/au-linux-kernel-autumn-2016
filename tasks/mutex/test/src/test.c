@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <mutex.h>
+#include <sys/types.h>
 
 void* test_lock_mutex_ok(void *vmutex)
 {

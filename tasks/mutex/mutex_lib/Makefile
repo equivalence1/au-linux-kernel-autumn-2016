@@ -1,9 +1,9 @@
 include ../sub_config.mk
 
-BIN_DIR=./bin/
-SRC_DIR=./src/
-INCLUDE_DIR=./include/
-MM_INCLUDE_DIR=../mutex_module/
+BIN_DIR=./bin
+SRC_DIR=./src
+INCLUDE_DIR=./include
+MM_INCLUDE_DIR=../mutex_module
 LIB_NAME=libmutex
 LIB_OBJ=$(BIN_DIR)/mutex_lib.o
 LIB_SHARED=$(BIN_DIR)/$(LIB_NAME).so

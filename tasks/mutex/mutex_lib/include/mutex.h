@@ -5,7 +5,9 @@
 #include <mutex_ioctl.h>
 
 typedef struct mutex {
-    // TODO store userspace side mutex state here
+    shared_spinlock_t lock;
+    shared_spinlock_t queue_lock;
+    volatile unsigned int wqueue_size;
 } mutex_t;
 
 // Return codes

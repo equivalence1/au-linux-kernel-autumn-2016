@@ -12,18 +12,27 @@
 
 #define MUTEX_IOCTL_MAGIC 'M'
 
-// TODO define mutex dev IOCTL interface here
-// Example:
+typedef size_t mutex_id_t;
 
-/*
-typedef unsigned long mutex_id_t;
+// create kernel side of mutex with specified id which should be an address this mutex
 
-typedef struct mutex_ioctl_lock_create_arg {
-    mutex_id_t id; // out param
-} mutex_ioctl_lock_create_arg_t;
+typedef struct mutex_ioctl_arg {
+    mutex_id_t id;
+} mutex_ioctl_arg_t;
 
 #define MUTEX_IOCTL_LOCK_CREATE \
-    _IOW(MUTEX_IOCTL_MAGIC, 1, mutex_ioctl_lock_create_arg_t)
-*/
+    _IOW(MUTEX_IOCTL_MAGIC, 1, mutex_ioctl_arg_t)
+
+// destroy kernel side of mutex
+#define MUTEX_IOCTL_LOCK_DESTROY \
+    _IOW(MUTEX_IOCTL_MAGIC, 2, mutex_ioctl_arg_t)
+
+// lock mutex with specified id in kernel
+#define MUTEX_IOCTL_LOCK \
+    _IOW(MUTEX_IOCTL_MAGIC, 3, mutex_ioctl_arg_t)
+
+// unlock mutex with specified id in kernel
+#define MUTEX_IOCTL_UNLOCK \
+    _IOW(MUTEX_IOCTL_MAGIC, 4, mutex_ioctl_arg_t)
 
 #endif //_VSD_UAPI_H
